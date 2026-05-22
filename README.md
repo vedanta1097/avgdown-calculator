@@ -2,6 +2,8 @@
 
 A web app that helps you calculate the optimal strategy for averaging down your stock positions.
 
+https://github.com/user-attachments/assets/6096bc31-c91e-4ed3-9543-31c0dfa9a9d1
+
 ## Features
 
 - **Mode 1 – Target Average Price:** Enter your desired new average price → get the number of lots and capital required to reach it
