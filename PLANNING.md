@@ -1,5 +1,288 @@
 # Averaging Down Calculator - Planning Document
 
+---
+
+## Feature: Stock Ticker + Floating Loss Comparison
+
+### Objective
+
+Tambahkan input kode saham (ticker) untuk fetch harga saham terbaru secara otomatis, lalu hitung dan tampilkan perbandingan **floating loss sebelum avg down** vs **floating loss setelah avg down**.
+
+---
+
+### Data Source
+
+Gunakan **Yahoo Finance API** (gratis, tidak perlu API key). Format ticker saham Indonesia: `BBCA.JK`, `TLKM.JK`, `BMRI.JK`.
+
+URL endpoint:
+
+```
+https://query1.finance.yahoo.com/v8/finance/chart/{TICKER}.JK?interval=1d&range=1d
+```
+
+Response structure (yang kita butuhkan):
+
+```json
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "regularMarketPrice": 9250
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+### Implementation Steps
+
+#### Step 1: Create API Route (`app/api/stock/route.ts`)
+
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+
+export async function GET(request: NextRequest) {
+  const ticker = request.nextUrl.searchParams.get("ticker");
+
+  if (!ticker || !/^[A-Z]{4}$/.test(ticker)) {
+    return NextResponse.json(
+      { error: "Kode saham tidak valid (contoh: BBCA)" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.JK?interval=1d&range=1d`,
+      { next: { revalidate: 60 } }, // cache 60 detik
+    );
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: "Saham tidak ditemukan" },
+        { status: 404 },
+      );
+    }
+
+    const data = await res.json();
+    const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+
+    if (!price) {
+      return NextResponse.json(
+        { error: "Harga tidak tersedia" },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({ ticker, price });
+  } catch {
+    return NextResponse.json(
+      { error: "Gagal mengambil data saham" },
+      { status: 500 },
+    );
+  }
+}
+```
+
+---
+
+#### Step 2: Create `components/StockTickerInput.tsx`
+
+Komponen input kode saham dengan tombol "Cari" dan loading state.
+
+**Props:**
+
+```typescript
+interface StockTickerInputProps {
+  onPriceFetched: (price: number, ticker: string) => void;
+}
+```
+
+**Behavior:**
+
+- Input text (4 huruf kapital, auto-uppercase)
+- Tombol "Cari" di samping input
+- Saat diklik, panggil `/api/stock?ticker=XXXX`
+- Jika berhasil: panggil `onPriceFetched(price, ticker)` → otomatis isi field "Harga Saat Ini"
+- Jika gagal: tampilkan error message di bawah input
+- Loading state: disable button + tampilkan spinner/text "Mencari..."
+
+**UI mockup:**
+
+```
+┌─────────────────────────────────────────┐
+│ Kode Saham (opsional)                   │
+│ ┌───────────────────┐ ┌──────────────┐  │
+│ │ BBCA              │ │ Cari Harga   │  │
+│ └───────────────────┘ └──────────────┘  │
+│ ✓ Harga terbaru: Rp 9,250              │
+└─────────────────────────────────────────┘
+```
+
+---
+
+#### Step 3: Add Floating Loss Calculation to `lib/calculate.ts`
+
+Tambahkan fungsi dan type baru:
+
+```typescript
+export type FloatingLossComparison = {
+  // Sebelum avg down
+  totalCostBefore: number; // currentLots * 100 * avgPrice
+  marketValueBefore: number; // currentLots * 100 * marketPrice
+  floatingLossBefore: number; // marketValueBefore - totalCostBefore (negatif = rugi)
+  floatingLossPercentBefore: number; // (floatingLossBefore / totalCostBefore) * 100
+
+  // Setelah avg down
+  totalCostAfter: number; // (currentLots + additionalLots) * 100 * newAvgPrice equivalent
+  marketValueAfter: number; // totalLotsAfter * 100 * marketPrice
+  floatingLossAfter: number; // marketValueAfter - totalCostAfter
+  floatingLossPercentAfter: number;
+
+  // Improvement
+  lossDifference: number; // floatingLossAfter - floatingLossBefore (positif = improvement)
+  breakEvenPrice: number; // newAvgPrice (harga yang harus dicapai supaya BEP)
+};
+
+export function calculateFloatingLoss(
+  currentLots: number,
+  avgPrice: number,
+  marketPrice: number, // harga pasar terbaru dari API
+  additionalLots: number,
+  buyPrice: number, // harga beli avg down (currentPrice dari form)
+): FloatingLossComparison {
+  const sharesBefore = currentLots * 100;
+  const totalCostBefore = sharesBefore * avgPrice;
+  const marketValueBefore = sharesBefore * marketPrice;
+  const floatingLossBefore = marketValueBefore - totalCostBefore;
+  const floatingLossPercentBefore =
+    (floatingLossBefore / totalCostBefore) * 100;
+
+  const sharesAfter = (currentLots + additionalLots) * 100;
+  const totalCostAfter = totalCostBefore + additionalLots * 100 * buyPrice;
+  const marketValueAfter = sharesAfter * marketPrice;
+  const floatingLossAfter = marketValueAfter - totalCostAfter;
+  const floatingLossPercentAfter = (floatingLossAfter / totalCostAfter) * 100;
+
+  const lossDifference = floatingLossAfter - floatingLossBefore;
+  const breakEvenPrice = totalCostAfter / sharesAfter;
+
+  return {
+    totalCostBefore,
+    marketValueBefore,
+    floatingLossBefore,
+    floatingLossPercentBefore,
+    totalCostAfter,
+    marketValueAfter,
+    floatingLossAfter,
+    floatingLossPercentAfter,
+    lossDifference,
+    breakEvenPrice,
+  };
+}
+```
+
+---
+
+#### Step 4: Create `components/FloatingLossCard.tsx`
+
+Komponen untuk menampilkan perbandingan floating loss.
+
+**Props:**
+
+```typescript
+interface FloatingLossCardProps {
+  comparison: FloatingLossComparison;
+  ticker: string;
+  marketPrice: number;
+}
+```
+
+**UI mockup:**
+
+```
+┌─────────────────────────────────────────┐
+│ 📊 Floating Loss Comparison (BBCA)      │
+│                                         │
+│ Harga Pasar Saat Ini    Rp 9,250       │
+│─────────────────────────────────────────│
+│                                         │
+│ SEBELUM Average Down:                   │
+│ Total Modal             Rp 50,000,000   │
+│ Nilai Pasar             Rp 46,250,000   │
+│ Floating Loss           -Rp 3,750,000   │
+│ Persentase              -7.50%          │
+│                                         │
+│ SETELAH Average Down:                   │
+│ Total Modal             Rp 68,500,000   │
+│ Nilai Pasar             Rp 66,600,000   │
+│ Floating Loss           -Rp 1,900,000   │
+│ Persentase              -2.77%          │
+│                                         │
+│─────────────────────────────────────────│
+│ Perbaikan Loss          +Rp 1,850,000   │
+│ Harga BEP Baru          Rp 9,514       │
+└─────────────────────────────────────────┘
+```
+
+Styling: Gunakan pattern yang sama dengan `ResultCard.tsx` (bg-slate-800, border, ResultRow pattern). Warna merah untuk loss, hijau untuk improvement.
+
+---
+
+#### Step 5: Update `components/Calculator.tsx`
+
+Perubahan yang diperlukan:
+
+1. **Import** `StockTickerInput` dan `FloatingLossCard`
+2. **State baru:**
+   ```typescript
+   const [ticker, setTicker] = useState("");
+   const [marketPrice, setMarketPrice] = useState<number | null>(null);
+   const [floatingLoss, setFloatingLoss] =
+     useState<FloatingLossComparison | null>(null);
+   ```
+3. **Handler baru:**
+   ```typescript
+   const handlePriceFetched = (price: number, fetchedTicker: string) => {
+     setMarketPrice(price);
+     setTicker(fetchedTicker);
+     // Otomatis isi currentPrice jika kosong
+     if (!currentPrice) {
+       setCurrentPrice(formatNumberInput(String(price)));
+     }
+   };
+   ```
+4. **Update `handleCalculate`:** Setelah kalkulasi mode1/mode2, jika `marketPrice` ada, panggil `calculateFloatingLoss()` dan simpan hasilnya ke state.
+5. **Render `StockTickerInput`:** Di atas section "Posisi Saat Ini"
+6. **Render `FloatingLossCard`:** Di bawah `ResultCard` (hanya tampil jika `floatingLoss` ada)
+
+---
+
+### File Changes Summary
+
+| File                              | Action | Description                                                      |
+| --------------------------------- | ------ | ---------------------------------------------------------------- |
+| `app/api/stock/route.ts`          | CREATE | API route untuk fetch harga saham                                |
+| `components/StockTickerInput.tsx` | CREATE | Input kode saham + tombol cari                                   |
+| `components/FloatingLossCard.tsx` | CREATE | Card perbandingan floating loss                                  |
+| `lib/calculate.ts`                | EDIT   | Tambah `FloatingLossComparison` type + `calculateFloatingLoss()` |
+| `components/Calculator.tsx`       | EDIT   | Integrasikan ticker input + floating loss card                   |
+
+---
+
+### Important Notes
+
+- `marketPrice` (dari API) bisa berbeda dengan `currentPrice` (harga beli avg down). User mungkin ingin beli di harga berbeda dari harga pasar saat ini.
+- Floating loss card hanya muncul jika user sudah fetch harga via ticker DAN sudah klik "Hitung".
+- Jika Yahoo Finance API down/blocked, fitur tetap opsional — user bisa manual input currentPrice tanpa ticker.
+- Validasi ticker: hanya 4 huruf kapital (format IDX).
+
+---
+
 ## Overview
 
 Aplikasi web kalkulator averaging down saham Indonesia, dibangun dengan Next.js (App Router) dan di-deploy ke Vercel.

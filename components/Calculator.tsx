@@ -6,13 +6,18 @@ import ModeSelector from "./ModeSelector";
 import Mode1Form from "./Mode1Form";
 import Mode2Form from "./Mode2Form";
 import ResultCard from "./ResultCard";
+import StockTickerInput from "./StockTickerInput";
+import FloatingLossCard from "./FloatingLossCard";
 import {
   parseNumber,
   formatRupiah,
+  formatNumberInput,
   calculateMode1,
   calculateMode2,
+  calculateFloatingLoss,
   type Mode1Result,
   type Mode2Result,
+  type FloatingLossComparison,
 } from "@/lib/calculate";
 
 type Mode = "mode1" | "mode2";
@@ -41,11 +46,28 @@ export default function Calculator() {
   const [mode1Result, setMode1Result] = useState<Mode1Result | null>(null);
   const [mode2Result, setMode2Result] = useState<Mode2Result | null>(null);
 
+  // Stock ticker + floating loss state
+  const [marketPrice, setMarketPrice] = useState<number | null>(null);
+  const [ticker, setTicker] = useState("");
+  const [floatingLoss, setFloatingLoss] =
+    useState<FloatingLossComparison | null>(null);
+
   const handleModeChange = (newMode: Mode) => {
     setMode(newMode);
     setMode1Result(null);
     setMode2Result(null);
+    setFloatingLoss(null);
     setErrors({});
+  };
+
+  const handlePriceFetched = (price: number, fetchedTicker: string) => {
+    setMarketPrice(price);
+    setTicker(fetchedTicker);
+    setFloatingLoss(null);
+    // Auto-fill current price field if it's empty
+    if (!currentPrice) {
+      setCurrentPrice(formatNumberInput(String(price)));
+    }
   };
 
   const validate = (): boolean => {
@@ -101,14 +123,26 @@ export default function Calculator() {
     const avg = parseNumber(avgPrice);
     const current = parseNumber(currentPrice);
 
+    let additionalLots = 0;
+
     if (mode === "mode1") {
       const target = parseNumber(targetAvgPrice);
-      setMode1Result(calculateMode1(lots, avg, current, target));
+      const result = calculateMode1(lots, avg, current, target);
+      setMode1Result(result);
       setMode2Result(null);
+      additionalLots = result.additionalLots;
     } else {
       const money = parseNumber(availableMoney);
-      setMode2Result(calculateMode2(lots, avg, current, money));
+      const result = calculateMode2(lots, avg, current, money);
+      setMode2Result(result);
       setMode1Result(null);
+      additionalLots = result.affordableLots;
+    }
+
+    if (marketPrice !== null) {
+      setFloatingLoss(
+        calculateFloatingLoss(lots, avg, marketPrice, additionalLots, current),
+      );
     }
   };
 
@@ -124,6 +158,14 @@ export default function Calculator() {
         <p className="text-slate-400 text-sm mt-1">
           Hitung strategi avg down saham kamu
         </p>
+      </div>
+
+      {/* Stock Ticker */}
+      <div className="bg-slate-800 rounded-2xl border border-slate-700 p-5">
+        <h2 className="text-white font-semibold text-sm mb-4">
+          Cari Harga Saham
+        </h2>
+        <StockTickerInput onPriceFetched={handlePriceFetched} />
       </div>
 
       {/* Shared Inputs */}
@@ -184,6 +226,15 @@ export default function Calculator() {
           mode1Result={mode1Result}
           mode2Result={mode2Result}
           currentAvgPrice={parseNumber(avgPrice)}
+        />
+      )}
+
+      {/* Floating Loss Comparison */}
+      {floatingLoss !== null && (
+        <FloatingLossCard
+          comparison={floatingLoss}
+          ticker={ticker}
+          marketPrice={marketPrice!}
         />
       )}
     </div>

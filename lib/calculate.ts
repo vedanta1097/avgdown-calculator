@@ -5,6 +5,22 @@ export type Mode1Result = {
   totalLots: number;
 };
 
+export type FloatingLossComparison = {
+  // Sebelum avg down
+  totalCostBefore: number;
+  marketValueBefore: number;
+  floatingLossBefore: number;
+  floatingLossPercentBefore: number;
+  // Setelah avg down
+  totalCostAfter: number;
+  marketValueAfter: number;
+  floatingLossAfter: number;
+  floatingLossPercentAfter: number;
+  // Improvement
+  lossDifference: number;
+  breakEvenPrice: number;
+};
+
 export type Mode2Result = {
   affordableLots: number;
   moneyUsed: number;
@@ -96,5 +112,47 @@ export function calculateMode2(
     newAvgPrice,
     totalLots: currentLots + affordableLots,
     avgDropPercent,
+  };
+}
+
+/**
+ * Calculate floating loss comparison before and after averaging down.
+ * marketPrice: latest market price fetched from API
+ * buyPrice:    price used to buy additional lots (currentPrice from form)
+ */
+export function calculateFloatingLoss(
+  currentLots: number,
+  avgPrice: number,
+  marketPrice: number,
+  additionalLots: number,
+  buyPrice: number,
+): FloatingLossComparison {
+  const sharesBefore = currentLots * 100;
+  const totalCostBefore = sharesBefore * avgPrice;
+  const marketValueBefore = sharesBefore * marketPrice;
+  const floatingLossBefore = marketValueBefore - totalCostBefore;
+  const floatingLossPercentBefore =
+    (floatingLossBefore / totalCostBefore) * 100;
+
+  const sharesAfter = (currentLots + additionalLots) * 100;
+  const totalCostAfter = totalCostBefore + additionalLots * 100 * buyPrice;
+  const marketValueAfter = sharesAfter * marketPrice;
+  const floatingLossAfter = marketValueAfter - totalCostAfter;
+  const floatingLossPercentAfter = (floatingLossAfter / totalCostAfter) * 100;
+
+  const lossDifference = floatingLossAfter - floatingLossBefore;
+  const breakEvenPrice = totalCostAfter / sharesAfter;
+
+  return {
+    totalCostBefore,
+    marketValueBefore,
+    floatingLossBefore,
+    floatingLossPercentBefore,
+    totalCostAfter,
+    marketValueAfter,
+    floatingLossAfter,
+    floatingLossPercentAfter,
+    lossDifference,
+    breakEvenPrice,
   };
 }
