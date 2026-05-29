@@ -48,8 +48,6 @@ export default function FloatingLossCard({
     marketValueAfter,
     floatingLossAfter,
     floatingLossPercentAfter,
-    lossDifference,
-    breakEvenPrice,
   } = comparison;
 
   const formatLoss = (val: number) =>
@@ -107,21 +105,6 @@ export default function FloatingLossCard({
         label="Floating Loss"
         value={`${formatLoss(floatingLossAfter)} (${formatPercent(floatingLossPercentAfter)})`}
         color={floatingLossAfter >= 0 ? "green" : "red"}
-      />
-
-      {/* Divider */}
-      <div className="my-3 border-t border-slate-600" />
-
-      {/* Summary */}
-      <FloatingLossRow
-        label="Perbaikan Loss"
-        value={formatLoss(lossDifference)}
-        color={lossDifference >= 0 ? "green" : "red"}
-      />
-      <FloatingLossRow
-        label="Harga BEP Baru"
-        value={formatRupiah(breakEvenPrice)}
-        color="white"
       />
     </div>
   );

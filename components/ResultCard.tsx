@@ -3,6 +3,7 @@
 import {
   type Mode1Result,
   type Mode2Result,
+  type Mode3Result,
   formatRupiah,
 } from "@/lib/calculate";
 
@@ -28,9 +29,10 @@ function ResultRow({ label, value, highlight }: ResultRowProps) {
 }
 
 interface ResultCardProps {
-  mode: "mode1" | "mode2";
+  mode: "mode1" | "mode2" | "mode3";
   mode1Result?: Mode1Result | null;
   mode2Result?: Mode2Result | null;
+  mode3Result?: Mode3Result | null;
   currentAvgPrice: number;
 }
 
@@ -38,6 +40,7 @@ export default function ResultCard({
   mode,
   mode1Result,
   mode2Result,
+  mode3Result,
   currentAvgPrice,
 }: ResultCardProps) {
   if (mode === "mode1" && mode1Result) {
@@ -114,6 +117,59 @@ export default function ResultCard({
           label="Penurunan avg price"
           value={`${avgDropPercent.toFixed(2)}%`}
         />
+      </div>
+    );
+  }
+
+  if (mode === "mode3" && mode3Result) {
+    const {
+      additionalLots,
+      moneyNeeded,
+      newAvgPrice,
+      totalLots,
+      actualFloatingLossPercent,
+    } = mode3Result;
+    const dropPercent =
+      ((currentAvgPrice - newAvgPrice) / currentAvgPrice) * 100;
+    const lossColor =
+      actualFloatingLossPercent < 0 ? "text-red-400" : "text-emerald-400";
+
+    return (
+      <div className="bg-slate-800 rounded-2xl border border-emerald-500/30 p-5">
+        <h3 className="text-emerald-400 font-semibold text-sm mb-1">
+          Hasil Kalkulasi
+        </h3>
+        <ResultRow
+          label="Lot yang perlu dibeli"
+          value={`${additionalLots.toLocaleString("en-US")} lot`}
+        />
+        <ResultRow
+          label="Dana yang dibutuhkan"
+          value={formatRupiah(moneyNeeded)}
+          highlight
+        />
+        <ResultRow
+          label="Total lot setelah avg down"
+          value={`${totalLots.toLocaleString("en-US")} lot`}
+        />
+        <ResultRow
+          label="Harga rata-rata baru"
+          value={formatRupiah(newAvgPrice)}
+        />
+        <ResultRow
+          label="Penurunan avg price"
+          value={`${dropPercent.toFixed(2)}%`}
+        />
+        <div className="flex justify-between items-center py-2.5">
+          <span className="text-slate-400 text-sm">Floating loss aktual</span>
+          <span className={`font-semibold text-sm ${lossColor}`}>
+            {actualFloatingLossPercent.toFixed(2)}%
+          </span>
+        </div>
+        <p className="text-xs text-slate-500 mt-3">
+          * Pembelian dibulatkan ke atas (lot utuh), sehingga floating loss
+          aktual bisa sedikit berbeda dari target.
+        </p>
       </div>
     );
   }

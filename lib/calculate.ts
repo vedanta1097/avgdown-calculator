@@ -42,6 +42,31 @@ export function formatNumberInput(raw: string): string {
   return new Intl.NumberFormat("en-US").format(Number(digits));
 }
 
+/** Format a price input that allows decimals, e.g. 419.16 → "419.16", 4190.16 → "4,190.16" */
+export function formatDecimalInput(raw: string): string {
+  // Strip everything except digits and decimal point
+  const cleaned = raw.replace(/[^0-9.]/g, "");
+  if (!cleaned) return "";
+  // Only keep first decimal point
+  const firstDot = cleaned.indexOf(".");
+  const sanitized =
+    firstDot === -1
+      ? cleaned
+      : cleaned.slice(0, firstDot + 1) +
+        cleaned.slice(firstDot + 1).replace(/\./g, "");
+  const hasDecimal = sanitized.includes(".");
+  const integerPart = hasDecimal ? sanitized.split(".")[0] : sanitized;
+  const decimalPart = hasDecimal
+    ? sanitized.slice(sanitized.indexOf(".") + 1)
+    : undefined;
+  const formattedInt = integerPart
+    ? new Intl.NumberFormat("en-US").format(Number(integerPart))
+    : "";
+  if (decimalPart !== undefined) return formattedInt + "." + decimalPart;
+  if (hasDecimal) return formattedInt + ".";
+  return formattedInt;
+}
+
 /** Strip comma separators and parse to number */
 export function parseNumber(formatted: string): number {
   const stripped = formatted.replace(/,/g, "");
@@ -154,5 +179,54 @@ export function calculateFloatingLoss(
     floatingLossPercentAfter,
     lossDifference,
     breakEvenPrice,
+  };
+}
+
+export type Mode3Result = {
+  additionalLots: number;
+  moneyNeeded: number;
+  newAvgPrice: number;
+  totalLots: number;
+  actualFloatingLossPercent: number;
+};
+
+/**
+ * Mode 3: Given a target floating loss % after avg down, calculate how many
+ * lots to buy and how much money is needed.
+ */
+export function calculateMode3(
+  currentLots: number,
+  avgPrice: number,
+  currentPrice: number,
+  marketPrice: number,
+  targetFloatingLossPercent: number, // e.g. -5 for -5%
+): Mode3Result {
+  const S = currentLots * 100;
+  const C = S * avgPrice;
+  const P = currentPrice;
+  const M = marketPrice;
+  const T = targetFloatingLossPercent;
+
+  // Solve: T/100 = ((S+n)*M - (C+n*P)) / (C+n*P)
+  const numerator = C * (1 + T / 100) - S * M;
+  const denominator = M - P * (1 + T / 100);
+
+  const n = numerator / denominator;
+  const additionalLots = Math.ceil(n / 100);
+  const additionalShares = additionalLots * 100;
+
+  const totalCostAfter = C + additionalShares * P;
+  const totalSharesAfter = S + additionalShares;
+  const newAvgPrice = totalCostAfter / totalSharesAfter;
+  const marketValueAfter = totalSharesAfter * M;
+  const actualFloatingLossPercent =
+    ((marketValueAfter - totalCostAfter) / totalCostAfter) * 100;
+
+  return {
+    additionalLots,
+    moneyNeeded: additionalShares * P,
+    newAvgPrice,
+    totalLots: currentLots + additionalLots,
+    actualFloatingLossPercent,
   };
 }

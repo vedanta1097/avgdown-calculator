@@ -1,6 +1,6 @@
 "use client";
 
-import { formatNumberInput } from "@/lib/calculate";
+import { formatDecimalInput } from "@/lib/calculate";
 
 interface Mode1FormProps {
   targetAvgPrice: string;
@@ -14,7 +14,7 @@ export default function Mode1Form({
   error,
 }: Mode1FormProps) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onTargetAvgPriceChange(formatNumberInput(e.target.value));
+    onTargetAvgPriceChange(formatDecimalInput(e.target.value));
   };
 
   return (
@@ -32,7 +32,7 @@ export default function Mode1Form({
         <span className="pl-3 text-slate-400 text-sm select-none">Rp</span>
         <input
           type="text"
-          inputMode="numeric"
+          inputMode="decimal"
           value={targetAvgPrice}
           onChange={handleChange}
           placeholder="900"

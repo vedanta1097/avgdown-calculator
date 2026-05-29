@@ -1,6 +1,6 @@
 "use client";
 
-import { formatNumberInput } from "@/lib/calculate";
+import { formatNumberInput, formatDecimalInput } from "@/lib/calculate";
 
 interface NumberInputProps {
   label: string;
@@ -10,6 +10,7 @@ interface NumberInputProps {
   placeholder: string;
   prefix?: string;
   suffix?: string;
+  allowDecimal?: boolean;
 }
 
 function NumberInput({
@@ -20,9 +21,14 @@ function NumberInput({
   placeholder,
   prefix,
   suffix,
+  allowDecimal,
 }: NumberInputProps) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(formatNumberInput(e.target.value));
+    onChange(
+      allowDecimal
+        ? formatDecimalInput(e.target.value)
+        : formatNumberInput(e.target.value),
+    );
   };
 
   return (
@@ -42,7 +48,7 @@ function NumberInput({
         )}
         <input
           type="text"
-          inputMode="numeric"
+          inputMode={allowDecimal ? "decimal" : "numeric"}
           value={value}
           onChange={handleChange}
           placeholder={placeholder}
@@ -99,6 +105,7 @@ export default function InputForm({
         error={errors.avgPrice}
         placeholder="1,000"
         prefix="Rp"
+        allowDecimal
       />
       <NumberInput
         label="Harga Saham Saat Ini (per lembar)"
@@ -107,6 +114,7 @@ export default function InputForm({
         error={errors.currentPrice}
         placeholder="800"
         prefix="Rp"
+        allowDecimal
       />
     </div>
   );

@@ -2,6 +2,169 @@
 
 ---
 
+## Feature: Mode 3 – Target Floating Loss % → Dana yang Dibutuhkan
+
+### Objective
+
+User bisa input target floating loss % setelah avg down (misal: -5%), lalu sistem hitung berapa lot dan dana yang dibutuhkan untuk mencapai floating loss tersebut.
+
+### Prerequisite
+
+Fitur ini **membutuhkan market price** (harga pasar saat ini dari ticker). Jika user belum fetch ticker, mode 3 di-disable / tampilkan pesan.
+
+---
+
+### Math Formula
+
+```
+Given:
+  S = currentLots * 100          (shares sekarang)
+  C = S * avgPrice               (total cost sekarang)
+  P = currentPrice               (harga beli avg down)
+  M = marketPrice                (harga pasar real-time)
+  T = targetFloatingLossPercent  (misal: -5 untuk -5%)
+
+Solve for n (additional shares):
+  T/100 = ((S + n) * M - (C + n * P)) / (C + n * P)
+
+  n = (C * (1 + T/100) - S * M) / (M - P * (1 + T/100))
+
+  additionalLots = ceil(n / 100)
+  moneyNeeded = additionalLots * 100 * P
+```
+
+---
+
+### Implementation Steps
+
+#### Step 1: Add `calculateMode3` to `lib/calculate.ts`
+
+```typescript
+export type Mode3Result = {
+  additionalLots: number;
+  moneyNeeded: number;
+  newAvgPrice: number;
+  totalLots: number;
+  actualFloatingLossPercent: number; // actual % after rounding to lots
+};
+
+export function calculateMode3(
+  currentLots: number,
+  avgPrice: number,
+  currentPrice: number,
+  marketPrice: number,
+  targetFloatingLossPercent: number, // e.g. -5 for -5%
+): Mode3Result {
+  const S = currentLots * 100;
+  const C = S * avgPrice;
+  const P = currentPrice;
+  const M = marketPrice;
+  const T = targetFloatingLossPercent;
+
+  const numerator = C * (1 + T / 100) - S * M;
+  const denominator = M - P * (1 + T / 100);
+
+  const n = numerator / denominator;
+  const additionalLots = Math.ceil(n / 100);
+  const additionalShares = additionalLots * 100;
+
+  const totalCostAfter = C + additionalShares * P;
+  const totalSharesAfter = S + additionalShares;
+  const newAvgPrice = totalCostAfter / totalSharesAfter;
+  const marketValueAfter = totalSharesAfter * M;
+  const actualFloatingLossPercent =
+    ((marketValueAfter - totalCostAfter) / totalCostAfter) * 100;
+
+  return {
+    additionalLots,
+    moneyNeeded: additionalShares * P,
+    newAvgPrice,
+    totalLots: currentLots + additionalLots,
+    actualFloatingLossPercent,
+  };
+}
+```
+
+---
+
+#### Step 2: Create `components/Mode3Form.tsx`
+
+Input field: **Target Floating Loss %** (number input, negative value, misal -5).
+
+```typescript
+interface Mode3FormProps {
+  targetLossPercent: string;
+  onTargetLossPercentChange: (value: string) => void;
+  error?: string;
+  disabled?: boolean; // disabled jika marketPrice belum ada
+}
+```
+
+- Tampilkan pesan "Fetch harga saham dulu" jika `disabled=true`.
+- Input accept angka negatif (atau auto-tambah minus).
+
+---
+
+#### Step 3: Update `components/ModeSelector.tsx`
+
+- Tambah Mode type: `"mode1" | "mode2" | "mode3"`
+- Tambah button ketiga: **"Target Loss %"**
+
+---
+
+#### Step 4: Update `components/Calculator.tsx`
+
+1. Add state: `targetLossPercent`, `mode3Result`
+2. Update `Mode` type to include `"mode3"`
+3. Add validation for mode3:
+   - `targetLossPercent` harus negatif (antara -99 dan 0)
+   - `marketPrice` harus tersedia
+   - Hasil `n` harus positif (target achievable)
+4. Add calculation logic di `handleCalculate`
+5. Render `Mode3Form` when `mode === "mode3"`
+6. Show result & floating loss card
+
+---
+
+#### Step 5: Update `components/ResultCard.tsx`
+
+Add mode3 result display:
+
+- Lot yang harus dibeli
+- Dana yang dibutuhkan
+- Harga rata-rata baru
+- Total lot setelah avg down
+- Actual floating loss % (setelah pembulatan lot)
+
+---
+
+### Validation Rules (Mode 3)
+
+| Condition                   | Error Message                                     |
+| --------------------------- | ------------------------------------------------- |
+| `targetLossPercent` kosong  | "Masukkan target floating loss %"                 |
+| `targetLossPercent >= 0`    | "Target harus negatif (misal: -5)"                |
+| `targetLossPercent <= -100` | "Target tidak boleh kurang dari -100%"            |
+| `marketPrice` null          | "Fetch harga saham terlebih dahulu"               |
+| Hasil `n <= 0`              | "Target sudah tercapai tanpa avg down"            |
+| `denominator === 0`         | "Target tidak bisa dicapai dengan harga beli ini" |
+
+---
+
+### File Changes Summary
+
+| File                          | Action                                           |
+| ----------------------------- | ------------------------------------------------ |
+| `lib/calculate.ts`            | Add `Mode3Result` type + `calculateMode3()`      |
+| `components/Mode3Form.tsx`    | **Create** – input target loss %                 |
+| `components/ModeSelector.tsx` | Add mode3 button                                 |
+| `components/Calculator.tsx`   | Add mode3 state, validation, calculation, render |
+| `components/ResultCard.tsx`   | Add mode3 result display                         |
+
+---
+
+---
+
 ## Feature: Stock Ticker + Floating Loss Comparison
 
 ### Objective

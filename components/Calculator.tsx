@@ -5,22 +5,25 @@ import InputForm from "./InputForm";
 import ModeSelector from "./ModeSelector";
 import Mode1Form from "./Mode1Form";
 import Mode2Form from "./Mode2Form";
+import Mode3Form from "./Mode3Form";
 import ResultCard from "./ResultCard";
 import StockTickerInput from "./StockTickerInput";
 import FloatingLossCard from "./FloatingLossCard";
 import {
   parseNumber,
+  formatDecimalInput,
   formatRupiah,
-  formatNumberInput,
   calculateMode1,
   calculateMode2,
+  calculateMode3,
   calculateFloatingLoss,
   type Mode1Result,
   type Mode2Result,
+  type Mode3Result,
   type FloatingLossComparison,
 } from "@/lib/calculate";
 
-type Mode = "mode1" | "mode2";
+type Mode = "mode1" | "mode2" | "mode3";
 
 type Errors = {
   currentLots?: string;
@@ -28,10 +31,11 @@ type Errors = {
   currentPrice?: string;
   targetAvgPrice?: string;
   availableMoney?: string;
+  targetLossPercent?: string;
 };
 
 export default function Calculator() {
-  const [mode, setMode] = useState<Mode>("mode1");
+  const [mode, setMode] = useState<Mode>("mode2");
 
   // Shared inputs (stored as formatted strings with commas)
   const [currentLots, setCurrentLots] = useState("");
@@ -41,10 +45,12 @@ export default function Calculator() {
   // Mode-specific inputs
   const [targetAvgPrice, setTargetAvgPrice] = useState("");
   const [availableMoney, setAvailableMoney] = useState("");
+  const [targetLossPercent, setTargetLossPercent] = useState("");
 
   const [errors, setErrors] = useState<Errors>({});
   const [mode1Result, setMode1Result] = useState<Mode1Result | null>(null);
   const [mode2Result, setMode2Result] = useState<Mode2Result | null>(null);
+  const [mode3Result, setMode3Result] = useState<Mode3Result | null>(null);
 
   // Stock ticker + floating loss state
   const [marketPrice, setMarketPrice] = useState<number | null>(null);
@@ -56,6 +62,7 @@ export default function Calculator() {
     setMode(newMode);
     setMode1Result(null);
     setMode2Result(null);
+    setMode3Result(null);
     setFloatingLoss(null);
     setErrors({});
   };
@@ -64,10 +71,8 @@ export default function Calculator() {
     setMarketPrice(price);
     setTicker(fetchedTicker);
     setFloatingLoss(null);
-    // Auto-fill current price field if it's empty
-    if (!currentPrice) {
-      setCurrentPrice(formatNumberInput(String(price)));
-    }
+    // Always update current price field when a new ticker is fetched
+    setCurrentPrice(formatDecimalInput(String(price)));
   };
 
   const validate = (): boolean => {
@@ -112,6 +117,36 @@ export default function Calculator() {
       }
     }
 
+    if (mode === "mode3") {
+      const t = parseFloat(targetLossPercent);
+      if (!targetLossPercent || isNaN(t)) {
+        newErrors.targetLossPercent = "Masukkan target floating loss %";
+      } else if (t >= 0) {
+        newErrors.targetLossPercent = "Target harus negatif (contoh: -5)";
+      } else if (t <= -100) {
+        newErrors.targetLossPercent = "Target tidak boleh kurang dari -100%";
+      } else if (lots > 0 && avg > 0 && current > 0) {
+        // Check denominator & achievability using current price from input
+        const S = lots * 100;
+        const C = S * avg;
+        const P = current;
+        const M = current;
+        const T = t;
+        const denominator = M - P * (1 + T / 100);
+        if (Math.abs(denominator) < 1e-9) {
+          newErrors.targetLossPercent =
+            "Target tidak bisa dicapai dengan harga beli ini";
+        } else {
+          const numerator = C * (1 + T / 100) - S * M;
+          const n = numerator / denominator;
+          if (n <= 0) {
+            newErrors.targetLossPercent =
+              "Target sudah tercapai tanpa avg down";
+          }
+        }
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -130,23 +165,37 @@ export default function Calculator() {
       const result = calculateMode1(lots, avg, current, target);
       setMode1Result(result);
       setMode2Result(null);
+      setMode3Result(null);
       additionalLots = result.additionalLots;
-    } else {
+    } else if (mode === "mode2") {
       const money = parseNumber(availableMoney);
       const result = calculateMode2(lots, avg, current, money);
       setMode2Result(result);
       setMode1Result(null);
+      setMode3Result(null);
       additionalLots = result.affordableLots;
+    } else {
+      const t = parseFloat(targetLossPercent);
+      // Use current price from input as market price for mode3
+      const result = calculateMode3(lots, avg, current, current, t);
+      setMode3Result(result);
+      setMode1Result(null);
+      setMode2Result(null);
+      additionalLots = result.additionalLots;
     }
 
-    if (marketPrice !== null) {
-      setFloatingLoss(
-        calculateFloatingLoss(lots, avg, marketPrice, additionalLots, current),
-      );
-    }
+    // Always use current price from input for floating loss calculation
+    setFloatingLoss(
+      calculateFloatingLoss(lots, avg, current, additionalLots, current),
+    );
   };
 
-  const hasResult = mode === "mode1" ? !!mode1Result : !!mode2Result;
+  const hasResult =
+    mode === "mode1"
+      ? !!mode1Result
+      : mode === "mode2"
+        ? !!mode2Result
+        : !!mode3Result;
 
   return (
     <div className="max-w-md mx-auto flex flex-col gap-5">
@@ -194,7 +243,11 @@ export default function Calculator() {
       {/* Mode-specific Input */}
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-5">
         <h2 className="text-white font-semibold text-sm mb-4">
-          {mode === "mode1" ? "Target Averaging Down" : "Modal Averaging Down"}
+          {mode === "mode1"
+            ? "Target Averaging Down"
+            : mode === "mode2"
+              ? "Modal Averaging Down"
+              : "Target Floating Loss"}
         </h2>
         {mode === "mode1" ? (
           <Mode1Form
@@ -202,11 +255,18 @@ export default function Calculator() {
             onTargetAvgPriceChange={setTargetAvgPrice}
             error={errors.targetAvgPrice}
           />
-        ) : (
+        ) : mode === "mode2" ? (
           <Mode2Form
             availableMoney={availableMoney}
             onAvailableMoneyChange={setAvailableMoney}
             error={errors.availableMoney}
+          />
+        ) : (
+          <Mode3Form
+            targetLossPercent={targetLossPercent}
+            onTargetLossPercentChange={setTargetLossPercent}
+            error={errors.targetLossPercent}
+            disabled={false}
           />
         )}
       </div>
@@ -225,6 +285,7 @@ export default function Calculator() {
           mode={mode}
           mode1Result={mode1Result}
           mode2Result={mode2Result}
+          mode3Result={mode3Result}
           currentAvgPrice={parseNumber(avgPrice)}
         />
       )}
@@ -234,7 +295,7 @@ export default function Calculator() {
         <FloatingLossCard
           comparison={floatingLoss}
           ticker={ticker}
-          marketPrice={marketPrice!}
+          marketPrice={parseNumber(currentPrice)}
         />
       )}
     </div>
