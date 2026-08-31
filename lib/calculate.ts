@@ -3,15 +3,19 @@ export type Mode1Result = {
   moneyNeeded: number;
   actualNewAvg: number;
   totalLots: number;
+  avgChangePercent: number;
+  strategy: AveragingStrategy;
 };
 
+export type AveragingStrategy = "up" | "down" | "unchanged";
+
 export type FloatingLossComparison = {
-  // Sebelum avg down
+  // Sebelum pembelian tambahan
   totalCostBefore: number;
   marketValueBefore: number;
   floatingLossBefore: number;
   floatingLossPercentBefore: number;
-  // Setelah avg down
+  // Setelah pembelian tambahan
   totalCostAfter: number;
   marketValueAfter: number;
   floatingLossAfter: number;
@@ -27,8 +31,18 @@ export type Mode2Result = {
   moneyLeft: number;
   newAvgPrice: number;
   totalLots: number;
-  avgDropPercent: number;
+  avgChangePercent: number;
+  strategy: AveragingStrategy;
 };
+
+export function getAveragingStrategy(
+  avgPrice: number,
+  buyPrice: number,
+): AveragingStrategy {
+  if (buyPrice > avgPrice) return "up";
+  if (buyPrice < avgPrice) return "down";
+  return "unchanged";
+}
 
 /** Format a number as Rupiah with comma thousand separators: Rp 1,234,567 */
 export function formatRupiah(amount: number): string {
@@ -74,9 +88,15 @@ export function parseNumber(formatted: string): number {
   return isNaN(num) ? 0 : num;
 }
 
+function requirePositiveFinite(value: number, name: string) {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive finite number`);
+  }
+}
+
 /**
  * Mode 1: Given a target average price, calculate how many lots to buy
- * and how much money is needed.
+ * and how much money is needed. Works for both averaging up and down.
  */
 export function calculateMode1(
   currentLots: number,
@@ -84,6 +104,20 @@ export function calculateMode1(
   currentPrice: number,
   targetAvgPrice: number,
 ): Mode1Result {
+  requirePositiveFinite(currentLots, "currentLots");
+  requirePositiveFinite(avgPrice, "avgPrice");
+  requirePositiveFinite(currentPrice, "currentPrice");
+  requirePositiveFinite(targetAvgPrice, "targetAvgPrice");
+
+  if (
+    targetAvgPrice <= Math.min(avgPrice, currentPrice) ||
+    targetAvgPrice >= Math.max(avgPrice, currentPrice)
+  ) {
+    throw new RangeError(
+      "targetAvgPrice must be strictly between avgPrice and currentPrice",
+    );
+  }
+
   const totalSharesNow = currentLots * 100;
   const totalCostNow = totalSharesNow * avgPrice;
 
@@ -98,12 +132,15 @@ export function calculateMode1(
   const actualNewAvg =
     (totalCostNow + additionalLots * 100 * currentPrice) /
     (totalSharesNow + additionalLots * 100);
+  const avgChangePercent = ((actualNewAvg - avgPrice) / avgPrice) * 100;
 
   return {
     additionalLots,
     moneyNeeded,
     actualNewAvg,
     totalLots: currentLots + additionalLots,
+    avgChangePercent,
+    strategy: getAveragingStrategy(avgPrice, currentPrice),
   };
 }
 
@@ -117,18 +154,26 @@ export function calculateMode2(
   currentPrice: number,
   availableMoney: number,
 ): Mode2Result {
+  requirePositiveFinite(currentLots, "currentLots");
+  requirePositiveFinite(avgPrice, "avgPrice");
+  requirePositiveFinite(currentPrice, "currentPrice");
+  requirePositiveFinite(availableMoney, "availableMoney");
+
   const totalSharesNow = currentLots * 100;
   const totalCostNow = totalSharesNow * avgPrice;
 
   // Round down to affordable whole lots
   const affordableLots = Math.floor(availableMoney / (currentPrice * 100));
+  if (affordableLots < 1) {
+    throw new RangeError("availableMoney must be enough to buy at least one lot");
+  }
   const additionalShares = affordableLots * 100;
   const moneyUsed = affordableLots * 100 * currentPrice;
   const moneyLeft = availableMoney - moneyUsed;
 
   const newAvgPrice =
     (totalCostNow + moneyUsed) / (totalSharesNow + additionalShares);
-  const avgDropPercent = ((avgPrice - newAvgPrice) / avgPrice) * 100;
+  const avgChangePercent = ((newAvgPrice - avgPrice) / avgPrice) * 100;
 
   return {
     affordableLots,
@@ -136,12 +181,13 @@ export function calculateMode2(
     moneyLeft,
     newAvgPrice,
     totalLots: currentLots + affordableLots,
-    avgDropPercent,
+    avgChangePercent,
+    strategy: getAveragingStrategy(avgPrice, currentPrice),
   };
 }
 
 /**
- * Calculate floating loss comparison before and after averaging down.
+ * Calculate floating profit/loss before and after an additional purchase.
  * marketPrice: latest market price fetched from API
  * buyPrice:    price used to buy additional lots (currentPrice from form)
  */
@@ -187,31 +233,47 @@ export type Mode3Result = {
   moneyNeeded: number;
   newAvgPrice: number;
   totalLots: number;
-  actualFloatingLossPercent: number;
+  actualProfitLossPercent: number;
+  strategy: AveragingStrategy;
 };
 
 /**
- * Mode 3: Given a target floating loss % after avg down, calculate how many
- * lots to buy and how much money is needed.
+ * Mode 3: Given a target floating profit/loss % after an additional purchase,
+ * calculate how many lots and how much money are needed.
  */
 export function calculateMode3(
   currentLots: number,
   avgPrice: number,
   currentPrice: number,
   marketPrice: number,
-  targetFloatingLossPercent: number, // e.g. -5 for -5%
+  targetProfitLossPercent: number, // e.g. -5 for loss, 5 for profit
 ): Mode3Result {
+  requirePositiveFinite(currentLots, "currentLots");
+  requirePositiveFinite(avgPrice, "avgPrice");
+  requirePositiveFinite(currentPrice, "currentPrice");
+  requirePositiveFinite(marketPrice, "marketPrice");
+  if (!Number.isFinite(targetProfitLossPercent) || targetProfitLossPercent <= -100) {
+    throw new RangeError("targetProfitLossPercent must be finite and above -100");
+  }
+
   const S = currentLots * 100;
   const C = S * avgPrice;
   const P = currentPrice;
   const M = marketPrice;
-  const T = targetFloatingLossPercent;
+  const T = targetProfitLossPercent;
 
   // Solve: T/100 = ((S+n)*M - (C+n*P)) / (C+n*P)
   const numerator = C * (1 + T / 100) - S * M;
   const denominator = M - P * (1 + T / 100);
 
+  if (Math.abs(denominator) < 1e-12) {
+    throw new RangeError("Target cannot be reached with this purchase price");
+  }
+
   const n = numerator / denominator;
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new RangeError("Target requires a positive finite number of shares");
+  }
   const additionalLots = Math.ceil(n / 100);
   const additionalShares = additionalLots * 100;
 
@@ -219,7 +281,7 @@ export function calculateMode3(
   const totalSharesAfter = S + additionalShares;
   const newAvgPrice = totalCostAfter / totalSharesAfter;
   const marketValueAfter = totalSharesAfter * M;
-  const actualFloatingLossPercent =
+  const actualProfitLossPercent =
     ((marketValueAfter - totalCostAfter) / totalCostAfter) * 100;
 
   return {
@@ -227,6 +289,7 @@ export function calculateMode3(
     moneyNeeded: additionalShares * P,
     newAvgPrice,
     totalLots: currentLots + additionalLots,
-    actualFloatingLossPercent,
+    actualProfitLossPercent,
+    strategy: getAveragingStrategy(avgPrice, currentPrice),
   };
 }

@@ -1,11 +1,22 @@
 "use client";
 
 import {
+  type AveragingStrategy,
   type Mode1Result,
   type Mode2Result,
   type Mode3Result,
   formatRupiah,
 } from "@/lib/calculate";
+
+const strategyLabel: Record<AveragingStrategy, string> = {
+  up: "Average Up",
+  down: "Average Down",
+  unchanged: "Average Tetap",
+};
+
+function formatChange(percent: number) {
+  return `${percent > 0 ? "+" : ""}${percent.toFixed(2)}%`;
+}
 
 interface ResultRowProps {
   label: string;
@@ -44,16 +55,21 @@ export default function ResultCard({
   currentAvgPrice,
 }: ResultCardProps) {
   if (mode === "mode1" && mode1Result) {
-    const { additionalLots, moneyNeeded, actualNewAvg, totalLots } =
-      mode1Result;
-    const dropPercent =
-      ((currentAvgPrice - actualNewAvg) / currentAvgPrice) * 100;
+    const {
+      additionalLots,
+      moneyNeeded,
+      actualNewAvg,
+      totalLots,
+      avgChangePercent,
+      strategy,
+    } = mode1Result;
 
     return (
       <div className="bg-slate-800 rounded-2xl border border-emerald-500/30 p-5">
         <h3 className="text-emerald-400 font-semibold text-sm mb-1">
           Hasil Kalkulasi
         </h3>
+        <ResultRow label="Strategi" value={strategyLabel[strategy]} />
         <ResultRow
           label="Lot yang perlu dibeli"
           value={`${additionalLots.toLocaleString("en-US")} lot`}
@@ -63,7 +79,7 @@ export default function ResultCard({
           value={formatRupiah(moneyNeeded)}
         />
         <ResultRow
-          label="Total lot setelah avg down"
+          label="Total lot setelah pembelian"
           value={`${totalLots.toLocaleString("en-US")} lot`}
         />
         <ResultRow
@@ -72,12 +88,12 @@ export default function ResultCard({
           highlight
         />
         <ResultRow
-          label="Penurunan avg price"
-          value={`${dropPercent.toFixed(2)}%`}
+          label="Perubahan average"
+          value={formatChange(avgChangePercent)}
         />
         <p className="text-xs text-slate-500 mt-3">
-          * Pembelian dibulatkan ke atas (lot utuh), sehingga avg baru bisa
-          sedikit lebih rendah dari target.
+          * Pembelian dibulatkan ke atas ke lot utuh, sehingga average aktual
+          bisa sedikit melewati target.
         </p>
       </div>
     );
@@ -90,7 +106,8 @@ export default function ResultCard({
       moneyLeft,
       newAvgPrice,
       totalLots,
-      avgDropPercent,
+      avgChangePercent,
+      strategy,
     } = mode2Result;
 
     return (
@@ -98,6 +115,7 @@ export default function ResultCard({
         <h3 className="text-emerald-400 font-semibold text-sm mb-1">
           Hasil Kalkulasi
         </h3>
+        <ResultRow label="Strategi" value={strategyLabel[strategy]} />
         <ResultRow
           label="Lot yang bisa dibeli"
           value={`${affordableLots.toLocaleString("en-US")} lot`}
@@ -105,7 +123,7 @@ export default function ResultCard({
         <ResultRow label="Uang yang terpakai" value={formatRupiah(moneyUsed)} />
         <ResultRow label="Sisa uang" value={formatRupiah(moneyLeft)} />
         <ResultRow
-          label="Total lot setelah avg down"
+          label="Total lot setelah pembelian"
           value={`${totalLots.toLocaleString("en-US")} lot`}
         />
         <ResultRow
@@ -114,8 +132,8 @@ export default function ResultCard({
           highlight
         />
         <ResultRow
-          label="Penurunan avg price"
-          value={`${avgDropPercent.toFixed(2)}%`}
+          label="Perubahan average"
+          value={formatChange(avgChangePercent)}
         />
       </div>
     );
@@ -127,18 +145,20 @@ export default function ResultCard({
       moneyNeeded,
       newAvgPrice,
       totalLots,
-      actualFloatingLossPercent,
+      actualProfitLossPercent,
+      strategy,
     } = mode3Result;
-    const dropPercent =
-      ((currentAvgPrice - newAvgPrice) / currentAvgPrice) * 100;
+    const avgChangePercent =
+      ((newAvgPrice - currentAvgPrice) / currentAvgPrice) * 100;
     const lossColor =
-      actualFloatingLossPercent < 0 ? "text-red-400" : "text-emerald-400";
+      actualProfitLossPercent < 0 ? "text-red-400" : "text-emerald-400";
 
     return (
       <div className="bg-slate-800 rounded-2xl border border-emerald-500/30 p-5">
         <h3 className="text-emerald-400 font-semibold text-sm mb-1">
           Hasil Kalkulasi
         </h3>
+        <ResultRow label="Strategi" value={strategyLabel[strategy]} />
         <ResultRow
           label="Lot yang perlu dibeli"
           value={`${additionalLots.toLocaleString("en-US")} lot`}
@@ -149,7 +169,7 @@ export default function ResultCard({
           highlight
         />
         <ResultRow
-          label="Total lot setelah avg down"
+          label="Total lot setelah pembelian"
           value={`${totalLots.toLocaleString("en-US")} lot`}
         />
         <ResultRow
@@ -157,17 +177,17 @@ export default function ResultCard({
           value={formatRupiah(newAvgPrice)}
         />
         <ResultRow
-          label="Penurunan avg price"
-          value={`${dropPercent.toFixed(2)}%`}
+          label="Perubahan average"
+          value={formatChange(avgChangePercent)}
         />
         <div className="flex justify-between items-center py-2.5">
-          <span className="text-slate-400 text-sm">Floating loss aktual</span>
+          <span className="text-slate-400 text-sm">Profit/loss aktual</span>
           <span className={`font-semibold text-sm ${lossColor}`}>
-            {actualFloatingLossPercent.toFixed(2)}%
+            {formatChange(actualProfitLossPercent)}
           </span>
         </div>
         <p className="text-xs text-slate-500 mt-3">
-          * Pembelian dibulatkan ke atas (lot utuh), sehingga floating loss
+          * Pembelian dibulatkan ke atas ke lot utuh, sehingga profit/loss
           aktual bisa sedikit berbeda dari target.
         </p>
       </div>

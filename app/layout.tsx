@@ -5,9 +5,9 @@ import "./globals.css";
 const geist = Geist({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Kalkulator Averaging Down Saham",
+  title: "Kalkulator Average Up & Down Saham",
   description:
-    "Hitung strategi averaging down saham: berapa lot yang harus dibeli dan berapa uang yang dibutuhkan.",
+    "Hitung harga rata-rata baru, kebutuhan lot, modal, serta profit/loss setelah average up atau average down.",
 };
 
 export default function RootLayout({

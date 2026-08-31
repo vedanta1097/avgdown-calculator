@@ -41,7 +41,7 @@ export default function Mode2Form({
       </div>
       {error && <p className="text-red-400 text-xs">{error}</p>}
       <p className="text-xs text-slate-500 mt-0.5">
-        Jumlah uang yang ingin digunakan untuk membeli saham tambahan
+        Jumlah uang yang ingin digunakan untuk pembelian tambahan
       </p>
     </div>
   );

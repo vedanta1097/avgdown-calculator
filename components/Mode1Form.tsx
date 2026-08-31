@@ -41,7 +41,7 @@ export default function Mode1Form({
       </div>
       {error && <p className="text-red-400 text-xs">{error}</p>}
       <p className="text-xs text-slate-500 mt-0.5">
-        Harus di bawah harga rata-rata saat ini dan di atas harga saham sekarang
+        Target harus berada di antara average saat ini dan harga beli tambahan
       </p>
     </div>
   );

@@ -1,15 +1,15 @@
 "use client";
 
 interface Mode3FormProps {
-  targetLossPercent: string;
-  onTargetLossPercentChange: (value: string) => void;
+  targetProfitLossPercent: string;
+  onTargetProfitLossPercentChange: (value: string) => void;
   error?: string;
   disabled?: boolean;
 }
 
 export default function Mode3Form({
-  targetLossPercent,
-  onTargetLossPercentChange,
+  targetProfitLossPercent,
+  onTargetProfitLossPercentChange,
   error,
   disabled,
 }: Mode3FormProps) {
@@ -17,7 +17,7 @@ export default function Mode3Form({
     const raw = e.target.value;
     // Allow minus sign, digits, and single decimal point
     if (/^-?\d*\.?\d*$/.test(raw) || raw === "" || raw === "-") {
-      onTargetLossPercentChange(raw);
+      onTargetProfitLossPercentChange(raw);
     }
   };
 
@@ -25,18 +25,18 @@ export default function Mode3Form({
     <div className="flex flex-col gap-3">
       {disabled ? (
         <p className="text-amber-400 text-sm bg-amber-400/10 rounded-xl px-4 py-3">
-          Fetch harga saham terlebih dahulu untuk menggunakan mode ini.
+          Cari harga saham terlebih dahulu agar nilai pasar dapat dihitung.
         </p>
       ) : (
         <div className="flex flex-col gap-1">
           <label className="text-slate-400 text-xs">
-            Target Floating Loss Setelah Avg Down (%)
+            Target Profit/Loss Setelah Pembelian (%)
           </label>
           <div className="relative">
             <input
               type="text"
               inputMode="decimal"
-              value={targetLossPercent}
+              value={targetProfitLossPercent}
               onChange={handleChange}
               placeholder="-5"
               className={`w-full bg-slate-700 text-white rounded-xl px-4 py-3 pr-10 text-sm outline-none border ${
@@ -51,7 +51,7 @@ export default function Mode3Form({
           </div>
           {error && <p className="text-red-400 text-xs mt-0.5">{error}</p>}
           <p className="text-slate-500 text-xs">
-            Masukkan angka negatif, contoh: -5 untuk target floating loss -5%
+            Gunakan angka negatif untuk loss atau positif untuk profit
           </p>
         </div>
       )}

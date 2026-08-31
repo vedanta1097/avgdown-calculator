@@ -31,7 +31,7 @@ type Errors = {
   currentPrice?: string;
   targetAvgPrice?: string;
   availableMoney?: string;
-  targetLossPercent?: string;
+  targetProfitLossPercent?: string;
 };
 
 export default function Calculator() {
@@ -45,21 +45,20 @@ export default function Calculator() {
   // Mode-specific inputs
   const [targetAvgPrice, setTargetAvgPrice] = useState("");
   const [availableMoney, setAvailableMoney] = useState("");
-  const [targetLossPercent, setTargetLossPercent] = useState("");
+  const [targetProfitLossPercent, setTargetProfitLossPercent] = useState("");
 
   const [errors, setErrors] = useState<Errors>({});
   const [mode1Result, setMode1Result] = useState<Mode1Result | null>(null);
   const [mode2Result, setMode2Result] = useState<Mode2Result | null>(null);
   const [mode3Result, setMode3Result] = useState<Mode3Result | null>(null);
 
-  // Stock ticker + floating loss state
+  // Stock ticker + profit/loss comparison state
   const [marketPrice, setMarketPrice] = useState<number | null>(null);
   const [ticker, setTicker] = useState("");
   const [floatingLoss, setFloatingLoss] =
     useState<FloatingLossComparison | null>(null);
 
-  const handleModeChange = (newMode: Mode) => {
-    setMode(newMode);
+  const clearCalculation = () => {
     setMode1Result(null);
     setMode2Result(null);
     setMode3Result(null);
@@ -67,12 +66,25 @@ export default function Calculator() {
     setErrors({});
   };
 
+  const handleValueChange = (
+    setter: (value: string) => void,
+    value: string,
+  ) => {
+    setter(value);
+    clearCalculation();
+  };
+
+  const handleModeChange = (newMode: Mode) => {
+    setMode(newMode);
+    clearCalculation();
+  };
+
   const handlePriceFetched = (price: number, fetchedTicker: string) => {
     setMarketPrice(price);
     setTicker(fetchedTicker);
-    setFloatingLoss(null);
     // Always update current price field when a new ticker is fetched
     setCurrentPrice(formatDecimalInput(String(price)));
+    clearCalculation();
   };
 
   const validate = (): boolean => {
@@ -88,23 +100,22 @@ export default function Calculator() {
       newErrors.avgPrice = "Masukkan harga rata-rata yang valid";
     }
     if (!currentPrice || current <= 0) {
-      newErrors.currentPrice = "Masukkan harga saham saat ini yang valid";
+      newErrors.currentPrice = "Masukkan harga beli tambahan yang valid";
     }
-    if (lots > 0 && avg > 0 && current > 0 && current >= avg) {
-      newErrors.currentPrice =
-        "Harga saat ini harus lebih rendah dari harga rata-rata (avg down hanya berlaku saat harga turun)";
-    }
-
     if (mode === "mode1") {
       const target = parseNumber(targetAvgPrice);
       if (!targetAvgPrice || target <= 0) {
         newErrors.targetAvgPrice = "Masukkan target harga rata-rata yang valid";
-      } else if (avg > 0 && target >= avg) {
+      } else if (avg > 0 && current > 0 && current === avg) {
         newErrors.targetAvgPrice =
-          "Target harga harus lebih rendah dari harga rata-rata saat ini";
-      } else if (current > 0 && target <= current) {
+          "Harga beli tambahan sama dengan average saat ini, sehingga average tidak berubah";
+      } else if (
+        avg > 0 &&
+        current > 0 &&
+        (target <= Math.min(avg, current) || target >= Math.max(avg, current))
+      ) {
         newErrors.targetAvgPrice =
-          "Target harga harus lebih tinggi dari harga saham saat ini";
+          `Target harus di antara ${formatRupiah(Math.min(avg, current))} dan ${formatRupiah(Math.max(avg, current))}`;
       }
     }
 
@@ -118,31 +129,27 @@ export default function Calculator() {
     }
 
     if (mode === "mode3") {
-      const t = parseFloat(targetLossPercent);
-      if (!targetLossPercent || isNaN(t)) {
-        newErrors.targetLossPercent = "Masukkan target floating loss %";
-      } else if (t >= 0) {
-        newErrors.targetLossPercent = "Target harus negatif (contoh: -5)";
+      const t = parseFloat(targetProfitLossPercent);
+      if (marketPrice === null) {
+        newErrors.targetProfitLossPercent =
+          "Cari harga saham terlebih dahulu untuk mendapatkan harga pasar";
+      } else if (!targetProfitLossPercent || isNaN(t)) {
+        newErrors.targetProfitLossPercent = "Masukkan target profit/loss %";
       } else if (t <= -100) {
-        newErrors.targetLossPercent = "Target tidak boleh kurang dari -100%";
+        newErrors.targetProfitLossPercent =
+          "Target tidak boleh sama dengan atau kurang dari -100%";
       } else if (lots > 0 && avg > 0 && current > 0) {
-        // Check denominator & achievability using current price from input
-        const S = lots * 100;
-        const C = S * avg;
-        const P = current;
-        const M = current;
-        const T = t;
-        const denominator = M - P * (1 + T / 100);
-        if (Math.abs(denominator) < 1e-9) {
-          newErrors.targetLossPercent =
-            "Target tidak bisa dicapai dengan harga beli ini";
-        } else {
-          const numerator = C * (1 + T / 100) - S * M;
-          const n = numerator / denominator;
-          if (n <= 0) {
-            newErrors.targetLossPercent =
-              "Target sudah tercapai tanpa avg down";
-          }
+        const currentReturn = ((marketPrice - avg) / avg) * 100;
+        const purchaseReturn = ((marketPrice - current) / current) * 100;
+        const lower = Math.min(currentReturn, purchaseReturn);
+        const upper = Math.max(currentReturn, purchaseReturn);
+
+        if (Math.abs(t - currentReturn) < 1e-9) {
+          newErrors.targetProfitLossPercent =
+            "Target sudah tercapai tanpa pembelian tambahan";
+        } else if (t <= lower || t >= upper) {
+          newErrors.targetProfitLossPercent =
+            `Target harus di antara ${lower.toFixed(2)}% dan ${upper.toFixed(2)}% agar dapat dicapai`;
         }
       }
     }
@@ -175,18 +182,23 @@ export default function Calculator() {
       setMode3Result(null);
       additionalLots = result.affordableLots;
     } else {
-      const t = parseFloat(targetLossPercent);
-      // Use current price from input as market price for mode3
-      const result = calculateMode3(lots, avg, current, current, t);
+      const t = parseFloat(targetProfitLossPercent);
+      const result = calculateMode3(lots, avg, current, marketPrice!, t);
       setMode3Result(result);
       setMode1Result(null);
       setMode2Result(null);
       additionalLots = result.additionalLots;
     }
 
-    // Always use current price from input for floating loss calculation
+    const comparisonMarketPrice = marketPrice ?? current;
     setFloatingLoss(
-      calculateFloatingLoss(lots, avg, current, additionalLots, current),
+      calculateFloatingLoss(
+        lots,
+        avg,
+        comparisonMarketPrice,
+        additionalLots,
+        current,
+      ),
     );
   };
 
@@ -202,10 +214,10 @@ export default function Calculator() {
       {/* Header */}
       <div className="text-center pt-2">
         <h1 className="text-2xl font-bold text-white">
-          Kalkulator Averaging Down
+          Kalkulator Average Up & Down
         </h1>
         <p className="text-slate-400 text-sm mt-1">
-          Hitung strategi avg down saham kamu
+          Hitung dampak pembelian tambahan pada harga rata-rata saham kamu
         </p>
       </div>
 
@@ -226,9 +238,11 @@ export default function Calculator() {
           currentLots={currentLots}
           avgPrice={avgPrice}
           currentPrice={currentPrice}
-          onLotsChange={setCurrentLots}
-          onAvgPriceChange={setAvgPrice}
-          onCurrentPriceChange={setCurrentPrice}
+          onLotsChange={(value) => handleValueChange(setCurrentLots, value)}
+          onAvgPriceChange={(value) => handleValueChange(setAvgPrice, value)}
+          onCurrentPriceChange={(value) =>
+            handleValueChange(setCurrentPrice, value)
+          }
           errors={{
             currentLots: errors.currentLots,
             avgPrice: errors.avgPrice,
@@ -244,29 +258,35 @@ export default function Calculator() {
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-5">
         <h2 className="text-white font-semibold text-sm mb-4">
           {mode === "mode1"
-            ? "Target Averaging Down"
+            ? "Target Harga Rata-rata"
             : mode === "mode2"
-              ? "Modal Averaging Down"
-              : "Target Floating Loss"}
+              ? "Modal Pembelian Tambahan"
+              : "Target Profit/Loss"}
         </h2>
         {mode === "mode1" ? (
           <Mode1Form
             targetAvgPrice={targetAvgPrice}
-            onTargetAvgPriceChange={setTargetAvgPrice}
+            onTargetAvgPriceChange={(value) =>
+              handleValueChange(setTargetAvgPrice, value)
+            }
             error={errors.targetAvgPrice}
           />
         ) : mode === "mode2" ? (
           <Mode2Form
             availableMoney={availableMoney}
-            onAvailableMoneyChange={setAvailableMoney}
+            onAvailableMoneyChange={(value) =>
+              handleValueChange(setAvailableMoney, value)
+            }
             error={errors.availableMoney}
           />
         ) : (
           <Mode3Form
-            targetLossPercent={targetLossPercent}
-            onTargetLossPercentChange={setTargetLossPercent}
-            error={errors.targetLossPercent}
-            disabled={false}
+            targetProfitLossPercent={targetProfitLossPercent}
+            onTargetProfitLossPercentChange={(value) =>
+              handleValueChange(setTargetProfitLossPercent, value)
+            }
+            error={errors.targetProfitLossPercent}
+            disabled={marketPrice === null}
           />
         )}
       </div>
@@ -290,12 +310,12 @@ export default function Calculator() {
         />
       )}
 
-      {/* Floating Loss Comparison */}
+      {/* Profit/Loss Comparison */}
       {floatingLoss !== null && (
         <FloatingLossCard
           comparison={floatingLoss}
           ticker={ticker}
-          marketPrice={parseNumber(currentPrice)}
+          marketPrice={marketPrice ?? parseNumber(currentPrice)}
         />
       )}
     </div>

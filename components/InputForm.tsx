@@ -108,7 +108,7 @@ export default function InputForm({
         allowDecimal
       />
       <NumberInput
-        label="Harga Saham Saat Ini (per lembar)"
+        label="Harga Beli Tambahan (per lembar)"
         value={currentPrice}
         onChange={onCurrentPriceChange}
         error={errors.currentPrice}

@@ -59,7 +59,7 @@ export default function FloatingLossCard({
   return (
     <div className="bg-slate-800 rounded-2xl border border-blue-500/30 p-5">
       <h3 className="text-blue-400 font-semibold text-sm mb-1">
-        Floating Loss Comparison
+        Perbandingan Posisi
         {ticker && (
           <span className="text-slate-400 font-normal ml-1">({ticker}.JK)</span>
         )}
@@ -70,7 +70,7 @@ export default function FloatingLossCard({
 
       {/* Sebelum */}
       <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">
-        Sebelum Average Down
+        Sebelum Pembelian
       </p>
       <FloatingLossRow
         label="Total Modal"
@@ -81,7 +81,7 @@ export default function FloatingLossCard({
         value={formatRupiah(marketValueBefore)}
       />
       <FloatingLossRow
-        label="Floating Loss"
+        label="Floating Profit/Loss"
         value={`${formatLoss(floatingLossBefore)} (${formatPercent(floatingLossPercentBefore)})`}
         color={floatingLossBefore >= 0 ? "green" : "red"}
       />
@@ -91,7 +91,7 @@ export default function FloatingLossCard({
 
       {/* Sesudah */}
       <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">
-        Setelah Average Down
+        Setelah Pembelian
       </p>
       <FloatingLossRow
         label="Total Modal"
@@ -102,7 +102,7 @@ export default function FloatingLossCard({
         value={formatRupiah(marketValueAfter)}
       />
       <FloatingLossRow
-        label="Floating Loss"
+        label="Floating Profit/Loss"
         value={`${formatLoss(floatingLossAfter)} (${formatPercent(floatingLossPercentAfter)})`}
         color={floatingLossAfter >= 0 ? "green" : "red"}
       />

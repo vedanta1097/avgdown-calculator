@@ -31,7 +31,7 @@ export default function ModeSelector({
             : "text-slate-400 hover:text-white"
         }`}
       >
-        Target Loss %
+        Target P/L %
       </button>
       <button
         onClick={() => onModeChange("mode1")}
@@ -41,7 +41,7 @@ export default function ModeSelector({
             : "text-slate-400 hover:text-white"
         }`}
       >
-        Target Harga Avg
+        Target Average
       </button>
     </div>
   );
